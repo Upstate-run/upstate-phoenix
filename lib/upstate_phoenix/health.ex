@@ -8,7 +8,7 @@ defmodule UpstatePhoenix.Health do
   `cache`, `actions`) are omitted.
   """
 
-  alias UpstatePhoenix.{Database, Jobs}
+  alias UpstatePhoenix.{Database, Jobs, Recurring}
 
   @schema 1
 
@@ -16,12 +16,13 @@ defmodule UpstatePhoenix.Health do
   def call(config, now \\ DateTime.utc_now()) do
     tasks = [
       Task.async(fn -> section(fn -> Database.call(config.repos) end) end),
-      Task.async(fn -> section(fn -> Jobs.call(config, now) end) end)
+      Task.async(fn -> section(fn -> Jobs.call(config, now) end) end),
+      Task.async(fn -> section(fn -> Recurring.call(config, now) end) end)
     ]
 
     results = Task.yield_many(tasks, 2_000)
 
-    [database, jobs] =
+    [database, jobs, recurring] =
       Enum.map(results, fn {task, result} ->
         case result || Task.shutdown(task, :brutal_kill) do
           {:ok, value} -> value
@@ -38,6 +39,8 @@ defmodule UpstatePhoenix.Health do
       "database" => database,
       "jobs" => jobs
     }
+
+    body = if recurring, do: Map.put(body, "recurring", recurring), else: body
 
     status = if match?(%{"ok" => false}, database), do: 503, else: 200
     {status, body}

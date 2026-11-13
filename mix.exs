@@ -1,7 +1,7 @@
 defmodule UpstatePhoenix.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
   @docs_url "https://upstate.cloud/docs/phoenix"
 
   def project do
@@ -13,7 +13,7 @@ defmodule UpstatePhoenix.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
       description:
-        "Phoenix app health for Upstate: boot facts, pending migrations, database size and Oban job counts. Counts only.",
+        "Phoenix app health for Upstate: boot facts, pending migrations, database size, Oban job counts and cron schedule runs. Never job arguments.",
       package: package(),
       docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
       source_url: @docs_url
@@ -43,7 +43,11 @@ defmodule UpstatePhoenix.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      links: %{"Upstate" => "https://upstate.cloud", "Docs" => @docs_url},
+      links: %{
+        "Upstate" => "https://upstate.cloud",
+        "Docs" => @docs_url,
+        "GitHub" => "https://github.com/Upstate-run/upstate-phoenix"
+      },
       files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end

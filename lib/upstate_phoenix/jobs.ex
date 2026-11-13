@@ -49,17 +49,19 @@ defmodule UpstatePhoenix.Jobs do
       else: stats(config, table, now)
   end
 
-  defp job_table(false), do: ~s("oban_jobs")
-  defp job_table(nil), do: ~s("oban_jobs")
+  @doc false
+  def job_table(false), do: ~s("oban_jobs")
+  def job_table(nil), do: ~s("oban_jobs")
 
-  defp job_table(prefix) when is_binary(prefix) and byte_size(prefix) in 1..63 do
+  def job_table(prefix) when is_binary(prefix) and byte_size(prefix) in 1..63 do
     if String.valid?(prefix) and not String.contains?(prefix, <<0>>),
       do: ~s("#{String.replace(prefix, "\"", "\"\"")}"."oban_jobs")
   end
 
-  defp job_table(_prefix), do: nil
+  def job_table(_prefix), do: nil
 
-  defp oban_config(name) do
+  @doc false
+  def oban_config(name) do
     if Code.ensure_loaded?(Oban) do
       try do
         apply(Oban, :config, [name])

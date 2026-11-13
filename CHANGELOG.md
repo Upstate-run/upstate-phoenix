@@ -1,3 +1,28 @@
+# 0.3.0
+
+- Report the Oban cron schedule and its recent runs in a new `recurring` section, so Upstate
+  can propose a check-in for each recurring worker:
+  - `tasks`: `{key, class_name, schedule}` per `crontab` entry (worker module and cron
+    expression) read from the running Oban instance's `Oban.Cron` / `Oban.Plugins.Cron`
+    config. `@reboot` entries are skipped. `args` and every other option are never read.
+    Every entry is keyed `Worker (expression)`, so a key never depends on position, order or how
+    many other entries the worker has. Editing an expression is a new key; when exactly one
+    accepted entry of a worker is replaced by exactly one new entry of that worker, Upstate
+    moves the accepted check-in to the new key and updates its interval.
+  - `prune_max_age_seconds`: the `Oban.Plugins.Pruner` `max_age` (60 when the plugin has no
+    option), or null with no Pruner or an unreadable value. Below 5 minutes Upstate warns that
+    it can miss runs and holds back missed-run alerts for those check-ins.
+  - Oban Lite and Dolphin keep no finished-job rows, so they send no `recurring` section and
+    nothing is offered.
+  - `runs`: `{key, run_id, started_at, finished_at, result}` (newest 10 finished runs per entry within 24 hours of finishing, plus every run still going at any age), from the cron-inserted rows of `oban_jobs` (`executing` and `retryable` are
+    `running`, `completed` is `success`, `discarded` is `fail`; `cancelled` after a start is `fail`, never-started cancelled is skipped).
+    `run_id` is `oban-<job id>`. The query never selects args, meta (beyond the cron
+    expression), errors, tags or queue names. Reading the shared table reports every node's
+    runs, which `[:oban, :job, ...]` telemetry (this VM only) would not.
+  - A node that does not run the cron plugin sends no `recurring` section, so a web node
+    without cron never makes Upstate think the schedule was emptied.
+  - The schema stays 1 and the section is additive: servers that predate it ignore it.
+
 # 0.2.0
 
 - Report database health in the `database` section, for the first repo on PostgreSQL:

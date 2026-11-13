@@ -9,14 +9,15 @@ It is the Phoenix counterpart of the [`upstate-rails`](https://github.com/Upstat
 ## What is sent
 
 - App version (`APP_VERSION`, else `KAMAL_VERSION`, else `unknown`), Phoenix, Elixir and OTP versions, the environment (`prod`), and when the VM booted.
-- The reporter name and version (`upstate_phoenix`, `0.2.0`).
+- The reporter name and version (`upstate_phoenix`, `0.3.0`).
 - Whether every configured Ecto repo answers, and whether any of them has migrations that have not run.
 - Database health for the first repo (PostgreSQL only): its size in bytes (`pg_database_size`, this database only, not WAL or other databases), connections in use and `max_connections`, the oldest open transaction's age and the number of sessions idle in transaction (as visible to the app's role), `age(datfrozenxid)` (wraparound headroom), replication lag where this connection can see it, and the 5 largest tables with their total size and estimated live and dead rows. Table names are sent; row data never is.
 - Oban job numbers: queue depth (available, plus scheduled jobs whose time has come), age of the oldest of those, jobs completed and failed in the last 5 minutes, and when a job last ran.
+- Oban cron (only on a node that runs `Oban.Cron` / `Oban.Plugins.Cron`): for each `crontab` entry the worker module name and the schedule expression, and for its recent runs (last 24 hours, newest 10 finished runs per entry plus any still running) an id, when it started or finished and whether it succeeded, failed or is running. Upstate turns these into check-in suggestions; nothing is monitored until you accept. `@reboot` entries are skipped. The entry's `args` are never read. The Pruner's `max_age` is also sent: Oban's default of 60 seconds removes finished jobs before Upstate can read them, so keep `max_age` at 300 or more or Upstate warns and holds back missed-run alerts. Oban Lite and Dolphin (SQLite, MySQL) offer nothing.
 
 ## What is never sent
 
-No params, URLs or paths, SQL, row data, IP addresses, user agents, headers, cookies, job arguments, job errors, queue names, worker names, migration names, exception classes or messages, logs, or traces. The Rails-only sections of the schema (`rails`, `ruby`, `puma`, `active_record_pool`, `cache`, `actions`) are left out.
+No params, URLs or paths, SQL, row data, IP addresses, user agents, headers, cookies, job arguments, job errors, queue names, worker names (other than the worker modules in your own cron `crontab`), migration names, exception classes or messages, logs, or traces. The Rails-only sections of the schema (`rails`, `ruby`, `puma`, `active_record_pool`, `cache`, `actions`) are left out.
 
 ## Install
 
@@ -105,7 +106,7 @@ You should get `200` and JSON with `"schema": 1`. A `503` means a database is no
 {
   "schema": 1,
   "version": "4f2c1e7",
-  "reporter": {"name": "upstate_phoenix", "version": "0.2.0"},
+  "reporter": {"name": "upstate_phoenix", "version": "0.3.0"},
   "phoenix": {"version": "1.8.1", "elixir": "1.18.4", "otp": "27", "environment": "prod"},
   "booted_at": "2026-10-29T12:00:00Z",
   "database": {"ok": true, "pending_migrations": false, "size_bytes": 1342177280,
