@@ -100,6 +100,16 @@ curl -i -H "Authorization: Bearer $UPSTATE_HEALTH_TOKEN" http://<container ip>:4
 
 You should get `200` and JSON with `"schema": 1`. A `503` means a database is not answering (the JSON says so). A section that fails reports `null` and the rest still answers.
 
+### Local check
+
+```sh
+mix upstate.verify
+```
+
+Read-only. It sends nothing to Upstate and writes nothing and changes no credentials, and does not query your database or Oban (a fresh `mix` run has not started them; Upstate's observer reads them from the running app). It shows whether the reporter is on or disabled, that a token is present (its value is never printed), the reporter, Phoenix, Elixir and OTP versions, and that the plug rejects a wrong token, accepts the configured one and answers with schema 1. It exits non-zero when something needs fixing and says what to do. It runs only when you invoke it, never on install.
+
+A passing local check does not prove Upstate is receiving data. After a deploy, run `upstate doctor` to see Configured, Connected and Fresh evidence from Upstate itself.
+
 ## Example response
 
 ```json
