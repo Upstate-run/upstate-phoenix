@@ -108,6 +108,14 @@ mix upstate.verify
 
 Read-only. It sends nothing to Upstate and writes nothing and changes no credentials, and does not query your database or Oban (a fresh `mix` run has not started them; Upstate's observer reads them from the running app). It shows whether the reporter is on or disabled, that a token is present (its value is never printed), the reporter, Phoenix, Elixir and OTP versions, and that the plug rejects a wrong token, accepts the configured one and answers with schema 1. It exits non-zero when something needs fixing and says what to do. It runs only when you invoke it, never on install.
 
+In a release container `mix` is not available, so run the same check with `eval` (it needs only the loaded configuration; it does not start the endpoint, repos or Oban):
+
+```sh
+kamal app exec --reuse 'bin/<app> eval "UpstatePhoenix.Verify.main()"'
+```
+
+It prints the report and exits 1 when something needs fixing. With no token in a dev or test environment it prints a `note` ("expected outside production") with this command and exits 0; without a token in production it is a `FAIL`.
+
 A passing local check does not prove Upstate is receiving data. After a deploy, run `upstate doctor` to see Configured, Connected and Fresh evidence from Upstate itself.
 
 ## Example response
@@ -116,7 +124,7 @@ A passing local check does not prove Upstate is receiving data. After a deploy, 
 {
   "schema": 1,
   "version": "4f2c1e7",
-  "reporter": {"name": "upstate_phoenix", "version": "0.3.0"},
+  "reporter": {"name": "upstate_phoenix", "version": "0.5.0"},
   "phoenix": {"version": "1.8.1", "elixir": "1.18.4", "otp": "27", "environment": "prod"},
   "booted_at": "2026-10-29T12:00:00Z",
   "database": {"ok": true, "pending_migrations": false, "size_bytes": 1342177280,

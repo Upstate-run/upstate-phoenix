@@ -1,3 +1,8 @@
+# 0.5.0
+
+- Add `UpstatePhoenix.Verify.main/0`, for releases where `mix` is not available: `bin/<app> eval "UpstatePhoenix.Verify.main()"` prints the report and exits 1 when something needs fixing. It needs only the loaded configuration and does not start the endpoint, repos or Oban.
+- With no `UPSTATE_HEALTH_TOKEN` in a dev or test environment, the check reports a `note` instead of `FAIL`, says this is expected outside production, prints the production command and exits 0. Without a token in production it still fails.
+
 # 0.4.0
 
 - Add `mix upstate.verify`, a read-only check that sends nothing to Upstate and writes nothing (it does not query the database or Oban): disabled or configured, token presence (never the value), reporter and runtime versions, and plug authorization and response. It runs only when invoked and sends nothing to Upstate.

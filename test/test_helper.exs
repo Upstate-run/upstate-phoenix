@@ -2,7 +2,7 @@ alias UpstatePhoenix.TestRepo
 
 db_config = [
   database: System.get_env("UPSTATE_PHOENIX_TEST_DB", "upstate_phoenix_test"),
-  username: System.get_env("PGUSER", "postgres"),
+  username: System.get_env("PGUSER") || System.get_env("USER") || "postgres",
   password: System.get_env("PGPASSWORD", "postgres"),
   hostname: System.get_env("PGHOST", "localhost"),
   pool: Ecto.Adapters.SQL.Sandbox,

@@ -18,8 +18,18 @@ defmodule Mix.Tasks.Upstate.Verify do
   @impl Mix.Task
   def run(args) do
     {_parsed, _, _} = OptionParser.parse(args, strict: [])
-    report = UpstatePhoenix.Verify.run()
+    report = UpstatePhoenix.Verify.run(task_opts(Mix.env()))
     Mix.shell().info(UpstatePhoenix.Verify.render(report))
     unless report.ok, do: Mix.raise("Upstate reporter check failed")
+  end
+
+  # Dependencies always compile with MIX_ENV=prod, so the reporter's compile-time
+  # environment says "prod" even in the host app's dev or test. Use the invoking
+  # project's Mix env unless the app configured :environment explicitly.
+  @doc false
+  def task_opts(mix_env) do
+    if Application.get_env(:upstate_phoenix, :environment),
+      do: [],
+      else: [environment: to_string(mix_env)]
   end
 end

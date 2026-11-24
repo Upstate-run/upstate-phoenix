@@ -22,7 +22,7 @@ defmodule UpstatePhoenix.Verify do
     checks =
       case token do
         nil ->
-          [disabled_check()]
+          [disabled_check(config)]
 
         token ->
           token_checks(token, plug_opts)
@@ -38,10 +38,42 @@ defmodule UpstatePhoenix.Verify do
       environment: config.environment,
       token: %{present: not is_nil(token), length: if(token, do: String.length(token), else: 0)},
       checks: checks,
-      ok: Enum.all?(checks, &(&1.status == "ok")),
+      ok: Enum.all?(checks, &(&1.status in ["ok", "note"])),
       next_step:
         "A passing local check is not proof that Upstate receives data. After a deploy, run `upstate doctor` and wait for fresh evidence."
     }
+  end
+
+  @doc """
+  Runs the checks, prints the report to stdout and halts the VM: status 0 when the
+  reporter is healthy (or off outside production), 1 when something needs fixing.
+
+  For releases, where `mix` is not available:
+  `bin/<app> eval "UpstatePhoenix.Verify.main()"`. It needs only the loaded
+  configuration; it does not start the endpoint, repos or Oban.
+  """
+  def main(opts \\ []) do
+    {text, status} = execute(opts)
+    IO.puts(text)
+    System.halt(status)
+  end
+
+  @doc false
+  def execute(opts \\ []) do
+    # Release `eval` only guarantees loaded applications from Elixir 1.16. Load the
+    # reporter (and the host app, when named) so its configuration, including a token
+    # set through config, is readable on 1.15 too.
+    load_apps(opts)
+    report = run(opts)
+    {render(report), if(report.ok, do: 0, else: 1)}
+  end
+
+  defp load_apps(opts) do
+    for app <- [:upstate_phoenix, Keyword.get(opts, :otp_app)], is_atom(app), not is_nil(app) do
+      Application.load(app)
+    end
+
+    :ok
   end
 
   @doc "Human-readable lines. Never includes the token or any part of it."
@@ -57,7 +89,13 @@ defmodule UpstatePhoenix.Verify do
 
     lines =
       Enum.flat_map(report.checks, fn check ->
-        mark = if check.status == "ok", do: "ok  ", else: "FAIL"
+        mark =
+          case check.status do
+            "ok" -> "ok  "
+            "note" -> "note"
+            _ -> "FAIL"
+          end
+
         base = ["#{mark} #{check.name}: #{check.detail}"]
         if check.action, do: base ++ ["     next: #{check.action}"], else: base
       end)
@@ -65,7 +103,19 @@ defmodule UpstatePhoenix.Verify do
     Enum.join([header, "Token: #{token}"] ++ lines ++ [report.next_step], "\n")
   end
 
-  defp disabled_check do
+  defp disabled_check(%{environment: environment} = config)
+       when environment in ["dev", "test"] do
+    app = if config.otp_app, do: to_string(config.otp_app), else: "<app>"
+
+    check(
+      "configured",
+      "note",
+      "UPSTATE_HEALTH_TOKEN is not set in this #{environment} environment. That is expected outside production: the endpoint is off here and nothing is reported.",
+      "To check production, run: kamal app exec --reuse 'bin/#{app} eval \"UpstatePhoenix.Verify.main()\"'"
+    )
+  end
+
+  defp disabled_check(_config) do
     check(
       "configured",
       "disabled",
