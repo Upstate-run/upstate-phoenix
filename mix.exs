@@ -1,7 +1,7 @@
 defmodule UpstatePhoenix.MixProject do
   use Mix.Project
 
-  @version "0.5.0"
+  @version "0.6.0"
   @docs_url "https://upstate.cloud/docs/phoenix"
 
   def project do
@@ -13,7 +13,7 @@ defmodule UpstatePhoenix.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
       description:
-        "Phoenix app health for Upstate: boot facts, pending migrations, database size, Oban job counts and cron schedule runs. Never job arguments.",
+        "Phoenix app health for Upstate: boot facts, pending migrations, database size, Oban job counts, cron schedule runs and the slowest actions. Never job arguments.",
       package: package(),
       docs: [main: "readme", extras: ["README.md", "CHANGELOG.md"]],
       source_url: @docs_url
@@ -21,7 +21,7 @@ defmodule UpstatePhoenix.MixProject do
   end
 
   def application do
-    [extra_applications: [:logger]]
+    [extra_applications: [:logger], mod: {UpstatePhoenix.Application, []}]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]
@@ -32,6 +32,7 @@ defmodule UpstatePhoenix.MixProject do
   defp deps do
     [
       {:plug, "~> 1.14"},
+      {:telemetry, "~> 1.0"},
       {:ecto_sql, "~> 3.10", optional: true},
       {:oban, "~> 2.17", optional: true},
       {:jason, "~> 1.4", optional: true},

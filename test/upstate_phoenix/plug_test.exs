@@ -134,9 +134,24 @@ defmodule UpstatePhoenix.PlugTest do
       assert DateTime.compare(booted, DateTime.utc_now()) != :gt
       assert body["booted_at"] == json(health())["booted_at"]
 
-      for key <- ~w(rails ruby puma active_record_pool cache actions solid_queue) do
+      for key <- ~w(rails ruby puma active_record_pool cache solid_queue) do
         refute Map.has_key?(body, key), "#{key} should be omitted"
       end
+    end
+
+    test "actions is the closed-minute rollup, empty with no traffic" do
+      UpstatePhoenix.Actions.reset()
+      assert json(health())["actions"] == []
+
+      now = System.os_time(:second)
+      UpstatePhoenix.Actions.record("MyAppWeb.PostController#index", 12, 3, false, now - 120)
+      on_exit(&UpstatePhoenix.Actions.reset/0)
+
+      assert [%{"minute" => minute, "items" => [item]}] = json(health())["actions"]
+      assert {:ok, _, 0} = DateTime.from_iso8601(minute)
+      assert %{"name" => "MyAppWeb.PostController#index", "count" => 1, "errors" => 0} = item
+      assert item["db_ms"] == 3
+      assert length(item["duration_buckets"]) == 12
     end
 
     test "version falls back to KAMAL_VERSION, then unknown" do

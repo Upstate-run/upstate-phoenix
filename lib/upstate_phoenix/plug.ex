@@ -40,12 +40,17 @@ defmodule UpstatePhoenix.Plug do
 
   @impl true
   def call(%Plug.Conn{path_info: ["upstate", "health"]} = conn, opts) do
+    UpstatePhoenix.Actions.ensure_repos(opts)
+
     conn
     |> respond(opts)
     |> halt()
   end
 
-  def call(conn, _opts), do: conn
+  def call(conn, opts) do
+    UpstatePhoenix.Actions.ensure_repos(opts)
+    conn
+  end
 
   defp respond(conn, opts) do
     case UpstatePhoenix.Config.token() do

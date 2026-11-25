@@ -1,3 +1,7 @@
+# 0.6.0
+
+- Report the slowest actions: the same per-minute `actions` rollup the Rails reporter sends, built from `[:phoenix, :router_dispatch, ...]` telemetry. Actions are named `Controller#action` (a LiveView route uses the LiveView module, plus `#live_action`). Database time is summed from Ecto `:query` telemetry in the request process; queries from other processes are not attributed. Top 10 actions per minute, at most 200 names per minute, 20 minutes retained, in memory per VM. Never paths, params, queries or user data. The package now starts a small supervised process (`UpstatePhoenix.Application`) that owns the ETS table and telemetry handlers.
+
 # 0.5.0
 
 - Add `UpstatePhoenix.Verify.main/0`, for releases where `mix` is not available: `bin/<app> eval "UpstatePhoenix.Verify.main()"` prints the report and exits 1 when something needs fixing. It needs only the loaded configuration and does not start the endpoint, repos or Oban.

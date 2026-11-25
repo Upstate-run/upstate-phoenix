@@ -5,7 +5,7 @@ defmodule UpstatePhoenix.Health do
   `database.ok: false` and the status is 503.
 
   Sections that only make sense for Rails (`rails`, `ruby`, `puma`, `active_record_pool`,
-  `cache`, `actions`) are omitted.
+  `cache`) are omitted. `actions` is the per-minute rollup from `UpstatePhoenix.Actions`.
   """
 
   alias UpstatePhoenix.{Database, Jobs, Recurring}
@@ -37,7 +37,8 @@ defmodule UpstatePhoenix.Health do
       "phoenix" => section(fn -> phoenix(config) end),
       "booted_at" => booted_at(),
       "database" => database,
-      "jobs" => jobs
+      "jobs" => jobs,
+      "actions" => section(fn -> UpstatePhoenix.Actions.snapshot() end)
     }
 
     body = if recurring, do: Map.put(body, "recurring", recurring), else: body
