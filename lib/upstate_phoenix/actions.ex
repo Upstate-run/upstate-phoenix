@@ -269,7 +269,15 @@ defmodule UpstatePhoenix.Actions do
   defp status_error?(_), do: false
 
   @doc false
-  def handle_query(_event, measurements, _metadata, _config) do
+  def handle_query(_event, measurements, metadata, _config) do
+    case measurements do
+      %{queue_time: t} when is_integer(t) ->
+        UpstatePhoenix.Runtime.record_queue_time(Map.get(metadata, :repo), t)
+
+      _ ->
+        :ok
+    end
+
     case Process.get(@pdict_key) do
       %{db_us: us} = frame ->
         native =
@@ -339,6 +347,8 @@ defmodule UpstatePhoenix.Actions do
 
   @impl true
   def init(_opts) do
+    UpstatePhoenix.Runtime.create_table()
+
     :ets.new(@table, [
       :named_table,
       :public,

@@ -1,7 +1,7 @@
 defmodule UpstatePhoenix.MixProject do
   use Mix.Project
 
-  @version "0.6.0"
+  @version "0.7.0"
   @docs_url "https://upstate.cloud/docs/phoenix"
 
   def project do
@@ -21,7 +21,7 @@ defmodule UpstatePhoenix.MixProject do
   end
 
   def application do
-    [extra_applications: [:logger], mod: {UpstatePhoenix.Application, []}]
+    [extra_applications: [:logger, :runtime_tools], mod: {UpstatePhoenix.Application, []}]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]

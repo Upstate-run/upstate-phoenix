@@ -1,3 +1,8 @@
+# 0.7.0
+
+- Report BEAM and Ecto pool facts: a `beam` section (run queue, schedulers online, scheduler utilization since the previous report, total memory, process count and limit) and an `ecto_pool` section for the first repo (configured pool size and the 95th percentile of connection queue time from the last 256 queries). `scheduler_utilization` is `null` on the first report after boot; `ecto_pool.busy` is always `null` because DBConnection does not expose it. `runtime_tools` is now a dependency application (for `:scheduler`). Each section is read on its own and is `null` if it cannot be read.
+- Add Oban per-queue and per-worker data to `jobs`: `queues` (depth, oldest waiting age and this node's configured concurrency per queue, top 50 by depth), `served_queues` (the queues this node's Oban instance runs) and `classes` (processed, failed and run-time average and maximum per worker module over 5 minutes, top 50). Queue names (120 characters) and worker names (200) are sent; args, errors and meta are never read. Each field is `null` on its own if unreadable.
+
 # 0.6.0
 
 - Report the slowest actions: the same per-minute `actions` rollup the Rails reporter sends, built from `[:phoenix, :router_dispatch, ...]` telemetry. Actions are named `Controller#action` (a LiveView route uses the LiveView module, plus `#live_action`). Database time is summed from Ecto `:query` telemetry in the request process; queries from other processes are not attributed. Top 10 actions per minute, at most 200 names per minute, 20 minutes retained, in memory per VM. Never paths, params, queries or user data. The package now starts a small supervised process (`UpstatePhoenix.Application`) that owns the ETS table and telemetry handlers.

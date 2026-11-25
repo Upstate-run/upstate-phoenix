@@ -9,16 +9,19 @@ It is the Phoenix counterpart of the [`upstate-rails`](https://github.com/Upstat
 ## What is sent
 
 - App version (`APP_VERSION`, else `KAMAL_VERSION`, else `unknown`), Phoenix, Elixir and OTP versions, the environment (`prod`), and when the VM booted.
-- The reporter name and version (`upstate_phoenix`, `0.6.0`).
+- The reporter name and version (`upstate_phoenix`, `0.7.0`).
 - Whether every configured Ecto repo answers, and whether any of them has migrations that have not run.
 - Database health for the first repo (PostgreSQL only): its size in bytes (`pg_database_size`, this database only, not WAL or other databases), connections in use and `max_connections`, the oldest open transaction's age and the number of sessions idle in transaction (as visible to the app's role), `age(datfrozenxid)` (wraparound headroom), replication lag where this connection can see it, and the 5 largest tables with their total size and estimated live and dead rows. Table names are sent; row data never is.
+- BEAM runtime: run queue length, schedulers online, scheduler utilization (0 to 1, the average since the previous report; `null` on the first report after boot), total memory in bytes, and process count and limit. Numbers only.
+- Ecto pool for the first repo: configured `pool_size`, and the 95th percentile of the time queries waited for a pooled connection (from the last 256 queries, `null` until there are queries). The checked-out connection count is not available from DBConnection, so `busy` is always `null`.
 - Slowest actions: per minute, the top 10 actions by total time as `Controller#action` (a LiveView route uses the LiveView module), with request and error counts, response-time buckets and database time summed from Ecto query telemetry in the request process. Names come from your router, never paths or SQL. Kept in memory, at most 200 names per minute.
+- Oban queues and workers: per queue its depth, oldest waiting age and this node's configured concurrency (top 50 by depth, configured queues included), the queue names this node runs, and per worker module over the last 5 minutes the processed and failed counts and the average and maximum run time of completed jobs (top 50). Queue and worker names are sent, capped at 120 and 200 characters; job arguments, errors and meta are never read.
 - Oban job numbers: queue depth (available, plus scheduled jobs whose time has come), age of the oldest of those, jobs completed and failed in the last 5 minutes, and when a job last ran.
 - Oban cron (only on a node that runs `Oban.Cron` / `Oban.Plugins.Cron`): for each `crontab` entry the worker module name and the schedule expression, and for its recent runs (last 24 hours, newest 10 finished runs per entry plus any still running) an id, when it started or finished and whether it succeeded, failed or is running. Upstate turns these into check-in suggestions; nothing is monitored until you accept. `@reboot` entries are skipped. The entry's `args` are never read. The Pruner's `max_age` is also sent: Oban's default of 60 seconds removes finished jobs before Upstate can read them, so keep `max_age` at 300 or more or Upstate warns and holds back missed-run alerts. Oban Lite and Dolphin (SQLite, MySQL) offer nothing.
 
 ## What is never sent
 
-No params, URLs or paths, SQL, row data, IP addresses, user agents, headers, cookies, job arguments, job errors, queue names, worker names (other than the worker modules in your own cron `crontab`), migration names, exception classes or messages, logs, or traces. The Rails-only sections of the schema (`rails`, `ruby`, `puma`, `active_record_pool`, `cache`) are left out.
+No params, URLs or paths, SQL, row data, IP addresses, user agents, headers, cookies, job arguments, job errors, migration names, exception classes or messages, logs, or traces. The Rails-only sections of the schema (`rails`, `ruby`, `puma`, `active_record_pool`, `cache`) are left out.
 
 ## Install
 
@@ -125,16 +128,23 @@ A passing local check does not prove Upstate is receiving data. After a deploy, 
 {
   "schema": 1,
   "version": "4f2c1e7",
-  "reporter": {"name": "upstate_phoenix", "version": "0.6.0"},
+  "reporter": {"name": "upstate_phoenix", "version": "0.7.0"},
   "phoenix": {"version": "1.8.1", "elixir": "1.18.4", "otp": "27", "environment": "prod"},
   "booted_at": "2026-10-29T12:00:00Z",
+  "beam": {"run_queue": 0, "schedulers_online": 4, "scheduler_utilization": 0.12,
+           "memory_bytes": 212860928, "process_count": 480, "process_limit": 1048576},
+  "ecto_pool": {"size": 10, "queue_time_ms_p95": 0.4, "busy": null},
   "database": {"ok": true, "pending_migrations": false, "size_bytes": 1342177280,
                "connections": {"in_use": 12, "max": 100}, "oldest_transaction_age_seconds": 0,
                "idle_in_transaction": 0, "xid_age": 48211934,
                "largest_tables": [{"name": "public.events", "total_bytes": 812646400,
                                    "live_rows": 4210000, "dead_rows": 1200}]},
   "jobs": {"adapter": "oban", "queue_depth": 0, "oldest_queued_age_seconds": null, "workers": null,
-           "processed_last_5m": 42, "failed_last_5m": 0, "recent_processing_at": "2026-10-29T12:41:07Z"}
+           "processed_last_5m": 42, "failed_last_5m": 0, "recent_processing_at": "2026-10-29T12:41:07Z",
+           "queues": [{"name": "default", "depth": 0, "oldest_queued_age_seconds": null, "concurrency": 10}],
+           "served_queues": {"all": false, "names": ["default"]},
+           "classes": [{"name": "MyApp.Mailer", "processed_last_5m": 42, "failed_last_5m": 0,
+                        "duration_ms_avg": 220, "duration_ms_max": 1900}]}
 }
 ```
 

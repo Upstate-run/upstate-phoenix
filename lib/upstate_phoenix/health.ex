@@ -36,6 +36,8 @@ defmodule UpstatePhoenix.Health do
       "reporter" => %{"name" => "upstate_phoenix", "version" => UpstatePhoenix.version()},
       "phoenix" => section(fn -> phoenix(config) end),
       "booted_at" => booted_at(),
+      "beam" => section(&UpstatePhoenix.Runtime.beam/0),
+      "ecto_pool" => section(fn -> UpstatePhoenix.Runtime.ecto_pool(config.repos) end),
       "database" => database,
       "jobs" => jobs,
       "actions" => section(fn -> UpstatePhoenix.Actions.snapshot() end)

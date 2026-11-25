@@ -139,6 +139,93 @@ defmodule UpstatePhoenix.PlugTest do
       end
     end
 
+    test "beam and ecto_pool report runtime facts, numbers only" do
+      first = json(health())["beam"]
+      assert first["scheduler_utilization"] == nil or is_float(first["scheduler_utilization"])
+
+      beam = json(health())["beam"]
+      assert is_integer(beam["run_queue"]) and beam["run_queue"] >= 0
+      assert beam["schedulers_online"] == :erlang.system_info(:schedulers_online)
+      assert is_integer(beam["memory_bytes"]) and beam["memory_bytes"] > 0
+      assert is_integer(beam["process_count"]) and beam["process_count"] > 0
+      assert beam["process_limit"] >= beam["process_count"]
+      assert is_float(beam["scheduler_utilization"])
+      assert beam["scheduler_utilization"] >= 0 and beam["scheduler_utilization"] <= 1
+
+      assert %{"size" => size, "busy" => nil} = json(health())["ecto_pool"]
+      assert is_integer(size) and size > 0
+    end
+
+    test "scheduler wall time is owned by the collector, not by request processes" do
+      assert is_list(:erlang.statistics(:scheduler_wall_time))
+
+      # Each report runs in a short-lived process that exits afterwards.
+      report = fn -> Task.async(&UpstatePhoenix.Runtime.beam/0) |> Task.await() end
+      report.()
+      assert is_float(report.()["scheduler_utilization"])
+
+      # Still measuring after those processes are gone.
+      assert is_list(:erlang.statistics(:scheduler_wall_time))
+    end
+
+    test "a restarted collector re-enables scheduler wall time" do
+      old = Process.whereis(UpstatePhoenix.Actions)
+      ref = Process.monitor(old)
+      Process.exit(old, :kill)
+      assert_receive {:DOWN, ^ref, _, _, _}
+
+      wait = fn wait ->
+        pid = Process.whereis(UpstatePhoenix.Actions)
+
+        if pid && pid != old && :ets.whereis(:upstate_phoenix_runtime) != :undefined,
+          do: :ok,
+          else:
+            (
+              Process.sleep(10)
+              wait.(wait)
+            )
+      end
+
+      wait.(wait)
+      assert is_list(:erlang.statistics(:scheduler_wall_time))
+      UpstatePhoenix.Runtime.beam()
+      assert is_float(UpstatePhoenix.Runtime.beam()["scheduler_utilization"])
+    end
+
+    test "scheduler utilization is above zero after busy work between reports" do
+      UpstatePhoenix.Runtime.beam()
+      deadline = System.monotonic_time(:millisecond) + 200
+      spin = fn spin -> if System.monotonic_time(:millisecond) < deadline, do: spin.(spin) end
+      spin.(spin)
+
+      assert UpstatePhoenix.Runtime.beam()["scheduler_utilization"] > 0
+    end
+
+    test "ecto_pool queue time p95 comes from query telemetry for the first repo" do
+      # Earlier tests leave samples in the shared ring; start from an empty one.
+      :ets.match_delete(:upstate_phoenix_runtime, {{:q, TestRepo, :_}, :_})
+      :ets.delete(:upstate_phoenix_runtime, {:n, TestRepo})
+
+      for ms <- 1..100 do
+        UpstatePhoenix.Runtime.record_queue_time(
+          TestRepo,
+          System.convert_time_unit(ms * 1000, :microsecond, :native)
+        )
+      end
+
+      assert %{"queue_time_ms_p95" => p95} = json(health())["ecto_pool"]
+      assert p95 >= 90 and p95 <= 100
+    end
+
+    test "ecto_pool is omitted with no repos and a failing section reports null" do
+      assert UpstatePhoenix.Runtime.ecto_pool([]) == nil
+
+      assert %{"size" => nil, "queue_time_ms_p95" => nil, "busy" => nil} =
+               UpstatePhoenix.Runtime.ecto_pool([NoSuchRepo])
+
+      assert UpstatePhoenix.Health.section(fn -> raise "boom" end) == nil
+    end
+
     test "actions is the closed-minute rollup, empty with no traffic" do
       UpstatePhoenix.Actions.reset()
       assert json(health())["actions"] == []
@@ -412,6 +499,89 @@ defmodule UpstatePhoenix.PlugTest do
       assert_receive :dynamic_repo_used
     end
 
+    test "queues, served_queues and classes come from oban_jobs and the running config" do
+      # Oban's :manual testing mode clears `:queues`, so give the collector a config that
+      # looks like a running node.
+      start_supervised!({Oban, name: UpstatePhoenix.QueuesOban, repo: TestRepo, testing: :manual})
+
+      config = %{
+        Oban.config(UpstatePhoenix.QueuesOban)
+        | queues: [default: 10, mailers: [limit: 3], idle: 1]
+      }
+
+      insert_job("available", scheduled: 120)
+      insert_job("available", [scheduled: 10], %{queue: "mailers"})
+      insert_job("available", [scheduled: 10], %{queue: "other"})
+      insert_job("scheduled", scheduled: -600)
+
+      insert_job("completed", [scheduled: 100, attempted: 90, completed: 88], %{
+        worker: "MyApp.Mailer"
+      })
+
+      insert_job("completed", [scheduled: 100, attempted: 90, completed: 86], %{
+        worker: "MyApp.Mailer"
+      })
+
+      insert_job("completed", scheduled: 1000, attempted: 990, completed: 900)
+
+      insert_job("discarded", [scheduled: 100, attempted: 80, discarded: 80], %{
+        worker: "MyApp.Mailer"
+      })
+
+      insert_job("retryable", scheduled: -60, attempted: 40)
+      insert_job("available", [scheduled: 5], %{queue: String.duplicate("q", 121)})
+
+      jobs = UpstatePhoenix.Jobs.collect(config, DateTime.utc_now())
+
+      assert [%{"name" => "default", "depth" => 1, "concurrency" => 10} = default | rest] =
+               jobs["queues"]
+
+      assert default["oldest_queued_age_seconds"] in 119..122
+      assert %{"depth" => 1, "concurrency" => 3} = Enum.find(rest, &(&1["name"] == "mailers"))
+      assert %{"depth" => 1, "concurrency" => nil} = Enum.find(rest, &(&1["name"] == "other"))
+
+      assert %{"depth" => 0, "oldest_queued_age_seconds" => nil, "concurrency" => 1} =
+               Enum.find(rest, &(&1["name"] == "idle"))
+
+      assert jobs["served_queues"] == %{"all" => false, "names" => ["default", "idle", "mailers"]}
+
+      mailer = Enum.find(jobs["classes"], &(&1["name"] == "MyApp.Mailer"))
+      assert mailer["processed_last_5m"] == 2
+      assert mailer["failed_last_5m"] == 1
+      assert mailer["duration_ms_avg"] in 3_000..5_000
+      assert mailer["duration_ms_max"] in 3_000..5_000
+      assert hd(jobs["classes"])["name"] == "MyApp.Mailer"
+
+      other = Enum.find(jobs["classes"], &(&1["name"] == "MyApp.Worker"))
+      assert other["processed_last_5m"] == 0
+      assert other["failed_last_5m"] == 1
+      refute Enum.any?(jobs["queues"], &(String.length(&1["name"]) > 120))
+    end
+
+    test "queues false serves no queues and a failing field is null on its own" do
+      start_supervised!(
+        {Oban, name: UpstatePhoenix.NoQueuesOban, repo: TestRepo, testing: :manual, queues: false}
+      )
+
+      jobs = json(health(repos: @repos, oban: UpstatePhoenix.NoQueuesOban))["jobs"]
+      assert jobs["served_queues"] == %{"all" => false, "names" => []}
+      assert jobs["queues"] == []
+      assert jobs["classes"] == []
+
+      config = %{Oban.config(UpstatePhoenix.NoQueuesOban) | queues: :bad}
+
+      assert %{"served_queues" => %{"names" => []}} =
+               UpstatePhoenix.Jobs.collect(config, DateTime.utc_now())
+
+      # A missing table makes the whole section fail soundly; each new field is null on its own
+      # when only its query fails.
+      broken = %{Oban.config(UpstatePhoenix.NoQueuesOban) | prefix: "no_such_schema"}
+
+      assert UpstatePhoenix.Health.section(fn ->
+               UpstatePhoenix.Jobs.collect(broken, DateTime.utc_now())
+             end) == nil
+    end
+
     test "aggregate counts for depth, age, processed, failed and recent processing" do
       insert_job("available", scheduled: 120)
       insert_job("available", scheduled: 10)
@@ -448,11 +618,14 @@ defmodule UpstatePhoenix.PlugTest do
                "workers" => nil,
                "processed_last_5m" => 0,
                "failed_last_5m" => 0,
-               "recent_processing_at" => nil
+               "recent_processing_at" => nil,
+               "queues" => [],
+               "served_queues" => %{"all" => false, "names" => []},
+               "classes" => []
              }
     end
 
-    test "counts only: no queue names, workers, args or errors leave the app" do
+    test "queue and worker names are sent, but never args, errors or meta" do
       insert_job("available", [scheduled: 5], %{
         queue: "secret_queue",
         worker: "SecretWorker",
@@ -464,8 +637,7 @@ defmodule UpstatePhoenix.PlugTest do
       })
 
       body = health().resp_body
-      refute body =~ "secret_queue"
-      refute body =~ "SecretWorker"
+      assert body =~ "secret_queue"
       refute body =~ "SECRET"
       refute body =~ @migrations
     end
